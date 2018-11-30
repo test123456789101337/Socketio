@@ -677,7 +677,7 @@ describe('socket.io', function(){
         });
       });
     });
-    
+
     it('should not reuse same-namespace connections', function(done){
       var srv = http();
       var sio = io(srv);
@@ -811,138 +811,76 @@ describe('socket.io', function(){
       }
     });
 
-    it('should not emit volatile event after regular event', function(done) {
-      var srv = http();
-      var sio = io(srv);
 
-      var counter = 0;
-      srv.listen(function(){
-        sio.of('/chat').on('connection', function(s){
-          // Wait to make sure there are no packets being sent for opening the connection
-          setTimeout(function() {
-            sio.of('/chat').emit('ev', 'data');
-            sio.of('/chat').volatile.emit('ev', 'data');
-          }, 50);
-        });
-
-        var socket = client(srv, '/chat');
-        socket.on('ev', function() {
-          counter++;
-        });
-      });
-
-      setTimeout(function() {
-        expect(counter).to.be(1);
-        done();
-      }, 500);
-    });
-
-    it('should emit volatile event', function(done) {
-      var srv = http();
-      var sio = io(srv);
-
-      var counter = 0;
-      srv.listen(function(){
-        sio.of('/chat').on('connection', function(s){
-          // Wait to make sure there are no packets being sent for opening the connection
-          setTimeout(function() {
-            sio.of('/chat').volatile.emit('ev', 'data');
-          }, 100);
-        });
-
-        var socket = client(srv, '/chat');
-        socket.on('ev', function() {
-          counter++;
-        });
-      });
-
-      setTimeout(function() {
-        expect(counter).to.be(1);
-        done();
-      }, 500);
-    });
-
-    it('should enable compression by default', function(done){
+    it('should allow connections to dynamic namespaces', function(done){
       var srv = http();
       var sio = io(srv);
       srv.listen(function(){
-        var socket = client(srv, '/chat');
-        sio.of('/chat').on('connection', function(s){
-          s.conn.once('packetCreate', function(packet) {
-            expect(packet.options.compress).to.be(true);
-            done();
-          });
-          sio.of('/chat').emit('woot', 'hi');
+        var namespace = '/dynamic';
+        var dynamic = client(srv,namespace);
+        sio.useNamespaceValidator(function(nsp, next) {
+          expect(nsp).to.be(namespace);
+          next(null, true);
+        });
+        dynamic.on('error', function(err) {
+          expect().fail();
+        });
+        dynamic.on('connect', function() {
+          expect(sio.nsps[namespace]).to.be.a(Namespace);
+          expect(sio.nsps[namespace].sockets.length).to.be(1);
+          done();
         });
       });
     });
 
-    it('should disable compression', function(done){
+    it('should not allow connections to dynamic namespaces if not supported', function(done){
       var srv = http();
       var sio = io(srv);
       srv.listen(function(){
-        var socket = client(srv, '/chat');
-        sio.of('/chat').on('connection', function(s){
-          s.conn.once('packetCreate', function(packet) {
-            expect(packet.options.compress).to.be(false);
-            done();
-          });
-          sio.of('/chat').compress(false).emit('woot', 'hi');
+        var namespace = '/dynamic';
+        sio.useNamespaceValidator(function(nsp, next) {
+          expect(nsp).to.be(namespace);
+          next(null, false);
         });
-      });
-    });
-
-    describe('dynamic namespaces', function () {
-      it('should allow connections to dynamic namespaces with a regex', function(done){
-        const srv = http();
-        const sio = io(srv);
-        let count = 0;
-        srv.listen(function(){
-          const socket = client(srv, '/dynamic-101');
-          let dynamicNsp = sio.of(/^\/dynamic-\d+$/).on('connect', (socket) => {
-            expect(socket.nsp.name).to.be('/dynamic-101');
-            dynamicNsp.emit('hello', 1, '2', { 3: '4'});
-            if (++count === 4) done();
-          }).use((socket, next) => {
-            next();
-            if (++count === 4) done();
-          });
-          socket.on('error', function(err) {
+        sio.on('connect', function(socket) {
+          if (socket.nsp.name === namespace) {
             expect().fail();
-          });
-          socket.on('connect', () => {
-            if (++count === 4) done();
-          });
-          socket.on('hello', (a, b, c) => {
-            expect(a).to.eql(1);
-            expect(b).to.eql('2');
-            expect(c).to.eql({ 3: '4' });
-            if (++count === 4) done();
-          });
+          }
+        });
+
+        var dynamic = client(srv,namespace);
+        dynamic.on('connect', function(){
+          expect().fail();
+        });
+        dynamic.on('error', function(err) {
+          expect(err).to.be("Invalid namespace");
+          done();
         });
       });
-
-      it('should allow connections to dynamic namespaces with a function', function(done){
-        const srv = http();
-        const sio = io(srv);
-        srv.listen(function(){
-          const socket = client(srv, '/dynamic-101');
-          sio.of((name, query, next) => next(null, '/dynamic-101' === name));
-          socket.on('connect', done);
+    });
+    it('should not allow connections to dynamic namespaces if there is an error', function(done){
+      var srv = http();
+      var sio = io(srv);
+      srv.listen(function(){
+        var namespace = '/dynamic';
+        sio.useNamespaceValidator(function(nsp, next) {
+          expect(nsp).to.be(namespace);
+          next(new Error(), true);
         });
-      });
+        sio.on('connect', function(socket) {
+          if (socket.nsp.name === namespace) {
+            expect().fail();
+          }
+        });
 
-      it('should disallow connections when no dynamic namespace matches', function(done){
-        const srv = http();
-        const sio = io(srv);
-        srv.listen(function(){
-          const socket = client(srv, '/abc');
-          sio.of(/^\/dynamic-\d+$/);
-          sio.of((name, query, next) => next(null, '/dynamic-101' === name));
-          socket.on('error', (err) => {
-            expect(err).to.be('Invalid namespace');
-            done();
-          });
+        var dynamic = client(srv,namespace);
+        dynamic.on('connect', function(){
+          expect().fail();
+        });
+        dynamic.on('error', function(err) {
+          expect(err).to.be("Invalid namespace");
+          done();
+
         });
       });
     });
