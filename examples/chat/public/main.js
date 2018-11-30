@@ -7,7 +7,7 @@ $(function() {
     '#3b88eb', '#3824aa', '#a700ff', '#d300e7'
   ];
 
-  // Initialize varibles
+  // Initialize variables
   var $window = $(window);
   var $usernameInput = $('.usernameInput'); // Input for username
   var $messages = $('.messages'); // Messages area
@@ -263,4 +263,20 @@ $(function() {
   socket.on('stop typing', function (data) {
     removeChatTyping(data);
   });
+
+  socket.on('disconnect', function () {
+    log('you have been disconnected');
+  });
+
+  socket.on('reconnect', function () {
+    log('you have been reconnected');
+    if (username) {
+      socket.emit('add user', username);
+    }
+  });
+
+  socket.on('reconnect_error', function () {
+    log('attempt to reconnect has failed');
+  });
+
 });

@@ -9,3 +9,5 @@ lib-cov
 benchmarks/*.png
 node_modules
 coverage
+.idea
+dist
